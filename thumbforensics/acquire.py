@@ -45,8 +45,10 @@ def check(platform: str) -> tuple[bool, str]:
 
 def _check_ios(returncode: int, stdout: str, output: str) -> tuple[bool, str]:
     if returncode != 0:
-        return False, ("Não foi possível falar com o serviço de dispositivos da Apple. No Windows, "
-                       "instale o app Apple Devices (Microsoft Store) ou o iTunes.\n" + output)
+        return False, ("O serviço de dispositivos da Apple não está rodando (porta 27015 sem resposta). "
+                       "No Windows: abra o app Apple Devices com o iPhone plugado; se não resolver, "
+                       "reinicie o PC; se ainda falhar, use o iTunes baixado do site da Apple "
+                       "(não o da Microsoft Store), que instala o “Apple Mobile Device Service”.\n" + output)
     try:
         devices = json.loads(stdout or "[]")
     except json.JSONDecodeError:

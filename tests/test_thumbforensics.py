@@ -224,7 +224,7 @@ class DeviceCheckTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("iPhone do JP", msg)
         self.assertFalse(_check_ios(0, "[]", "")[0])
-        self.assertIn("Apple Devices", _check_ios(1, "", "erro")[1])
+        self.assertIn("27015", _check_ios(1, "", "erro")[1])
 
     def test_android(self):
         from thumbforensics.acquire import _check_android
