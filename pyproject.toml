@@ -14,3 +14,6 @@ phash = ["Pillow>=9"]
 
 [project.scripts]
 thumbforensics = "thumbforensics.cli:main"
+
+[project.gui-scripts]
+thumbforensics-gui = "thumbforensics.gui:main"

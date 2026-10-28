@@ -13,6 +13,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Callable
 
 IOS_PATHS = ["PhotoData", "DCIM"]
 ANDROID_PATHS = ["/sdcard/DCIM", "/sdcard/Pictures"]
@@ -24,18 +25,25 @@ def commands(platform: str, dest: Path) -> list[list[str]]:
     return [["adb", "pull", "-a", p, str(dest)] for p in ANDROID_PATHS]
 
 
-def run(platform: str, dest: Path, dry_run: bool = False) -> int:
+def run(platform: str, dest: Path, dry_run: bool = False, log: Callable[[str], None] = print) -> int:
     dest.mkdir(parents=True, exist_ok=True)
     cmds = commands(platform, dest)
     tool = cmds[0][0]
     if dry_run or shutil.which(tool) is None:
         if not dry_run:
-            print(f"'{tool}' não encontrado no PATH. Instale-o e rode:")
+            log(f"'{tool}' não encontrado no PATH. Instale-o e rode:")
         for c in cmds:
-            print("  " + " ".join(c))
+            log("  " + " ".join(c))
         return 0 if dry_run else 1
+    failures = 0
     for c in cmds:
-        print("$ " + " ".join(c))
-        if subprocess.run(c).returncode != 0:
-            print("Falhou (o caminho pode não existir neste aparelho); seguindo.")
-    return 0
+        log("$ " + " ".join(c))
+        # Saída linha a linha, para a interface gráfica mostrar o progresso.
+        proc = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, encoding="utf-8", errors="replace")
+        for line in proc.stdout:
+            log(line.rstrip())
+        if proc.wait() != 0:
+            failures += 1
+            log("Falhou (o caminho pode não existir neste aparelho); seguindo.")
+    return 1 if failures == len(cmds) else 0

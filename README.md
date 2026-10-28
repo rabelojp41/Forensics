@@ -25,7 +25,20 @@ Para a aquisição:
 - **iPhone:** `pip install pymobiledevice3`. Desbloqueie o aparelho e toque em "Confiar neste computador".
 - **Android:** instale o `adb` (Android Platform Tools) e ative **Opções do desenvolvedor → Depuração USB**.
 
-## Uso
+## Interface gráfica
+
+```bash
+thumbforensics-gui
+```
+
+Também abre com `thumbforensics gui` ou `python -m thumbforensics.gui`. A janela tem as duas etapas:
+
+1. **Copiar do celular:** escolha iPhone ou Android e a pasta de destino. Ao terminar, a cópia já vira a origem da análise.
+2. **Analisar:** escolha a origem (pasta, `.zip`/`.tar` ou backup, com o tipo detectado na hora), a saída, os artefatos e, se quiser, uma pasta de plugins extras. Ao terminar, o relatório abre no navegador.
+
+O registro na parte de baixo mostra o mesmo que a linha de comando. A interface usa Tkinter, que já vem com o Python do Windows e do macOS.
+
+## Uso (linha de comando)
 
 ### 1. Copiar os dados do aparelho (celular plugado por USB)
 

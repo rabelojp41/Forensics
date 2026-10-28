@@ -197,14 +197,22 @@ def _domain_root(domain: str) -> str:
     return ""
 
 
+def detect(source: Path) -> str | None:
+    """Tipo de entrada, sem indexar: 'backup', 'pasta', 'zip', 'tar' ou None."""
+    if source.is_dir():
+        return "backup" if (source / "Manifest.db").is_file() else "pasta"
+    if source.is_file():
+        if zipfile.is_zipfile(source):
+            return "zip"
+        if tarfile.is_tarfile(source):
+            return "tar"
+    return None
+
+
 def open_source(source: Path, staging: Path) -> Seeker:
     """Detecta o tipo de entrada, como o '-t' do iLEAPP, mas automaticamente."""
-    if source.is_dir():
-        if (source / "Manifest.db").is_file():
-            return ItunesSeeker(source, staging)
-        return DirSeeker(source, staging)
-    if zipfile.is_zipfile(source):
-        return ZipSeeker(source, staging)
-    if tarfile.is_tarfile(source):
-        return TarSeeker(source, staging)
-    raise SeekerError(f"Formato de entrada não reconhecido: {source}")
+    kind = detect(source)
+    seeker = {"backup": ItunesSeeker, "pasta": DirSeeker, "zip": ZipSeeker, "tar": TarSeeker}.get(kind)
+    if seeker is None:
+        raise SeekerError(f"Formato de entrada não reconhecido: {source}")
+    return seeker(source, staging)

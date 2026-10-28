@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, acquire, engine, phash, plugins, report
-from . import model as m
-from .seekers import SeekerError, open_source
+from . import __version__, acquire, api, plugins
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -19,6 +16,8 @@ def main(argv: list[str] | None = None) -> int:
         "Recupera miniaturas de fotos (inclusive apagadas) e artefatos de fototeca em extrações de iOS e Android."))
     p.add_argument("--version", action="version", version=__version__)
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("gui", help="abre a interface gráfica")
 
     a = sub.add_parser("adquirir", help="copia DCIM/PhotoData do aparelho conectado por USB")
     a.add_argument("plataforma", choices=["ios", "android"])
@@ -39,6 +38,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="compara visualmente com os originais para reduzir falsos positivos (requer Pillow)")
 
     args = p.parse_args(argv)
+    if args.cmd == "gui":
+        from . import gui
+        return gui.main()
     if args.cmd == "adquirir":
         return acquire.run(args.plataforma, args.destino, args.simular)
     if args.cmd == "listar":
@@ -48,50 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     return _analyze(args)
 
 
-def _select(available: dict, args) -> list:
-    chosen = list(available.values())
-    if args.artefatos:
-        keys = [k.strip() for k in args.artefatos.split(",") if k.strip()]
-        unknown = [k for k in keys if k not in available]
-        if unknown:
-            raise SystemExit(f"Artefato(s) desconhecido(s): {', '.join(unknown)}")
-        chosen = [available[k] for k in keys]
-    if args.plataforma != "auto":
-        chosen = [pl for pl in chosen if pl.platform in (args.plataforma, "any")]
-    return chosen
-
-
 def _analyze(args) -> int:
-    src: Path = args.origem
-    if not src.exists():
-        print(f"Origem não encontrada: {src}")
-        return 2
-    if src.is_dir() and args.saida.resolve().is_relative_to(src.resolve()):
-        print("A saída não pode ficar dentro da origem (não misture evidência e resultado).")
-        return 2
-
-    chosen = _select(plugins.load(args.plugins), args)
-    work = args.saida / "_trabalho"
     try:
-        seeker = open_source(src, work)
-    except SeekerError as ex:
+        chosen = api.select(plugins.load(args.plugins),
+                            args.artefatos.split(",") if args.artefatos else None, args.plataforma)
+        api.analyze(args.origem, args.saida, chosen, args.phash)
+    except api.AnalysisError as ex:
         print(ex)
         return 2
-    print(f"Origem: {seeker.kind}, {len(seeker)} arquivos indexados; {len(chosen)} artefato(s).")
-    try:
-        session = engine.run(seeker, chosen)
-        if args.phash:
-            if phash.available():
-                print(f"dHash: {phash.resolve(session.findings, seeker)} miniatura(s) ligadas a um original existente.")
-            else:
-                print("--phash ignorado: instale Pillow (pip install Pillow).")
-        report.export(session, args.saida)
-    finally:
-        seeker.close()
-        shutil.rmtree(work, ignore_errors=True)
-
-    print(f"{len(session.findings)} item(ns) recuperados.")
-    for status, n in report.summary(session.findings):
-        print(f"  {n:6d}  {m.STATUS_DESCRICAO[status]}")
-    print(f"Relatório: {args.saida / 'relatorio.html'}")
     return 0
