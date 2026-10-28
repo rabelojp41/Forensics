@@ -122,6 +122,19 @@ def whatsapp_midia(ctx):
 
 O `ctx` traz `files` (caminhos que casaram), `seeker` (`read`, `stage`, `exists`, `search`) e `shared` (dados de artefatos anteriores). Chaves duplicadas são rejeitadas. Uma exceção num plugin aparece no relatório sem interromper os demais.
 
+## Problemas comuns
+
+### Windows: "Failed to connect to usbmuxd socket" / porta 27015 sem resposta
+
+O `pymobiledevice3` precisa do **Apple Mobile Device Service**, que o Windows não traz. Em testes, nem o app Apple Devices da Microsoft Store nem o `winget install Apple.iTunes` (instalação silenciosa) instalaram esse serviço. O que resolveu foi instalar o componente direto de dentro do instalador do iTunes:
+
+```powershell
+& "C:\Program Files\7-Zip\7z.exe" x iTunes64Setup.exe -oC:\itunes\extraido
+msiexec /i C:\itunes\extraido\AppleMobileDeviceSupport64.msi
+```
+
+Depois de reiniciar, `Get-Service -DisplayName '*apple*'` deve mostrar o serviço como **Running**, e `Get-NetTCPConnection -LocalPort 27015 -State Listen` deve mostrar a porta aberta.
+
 ## Como cada miniatura é classificada
 
 | Status | Significado |
