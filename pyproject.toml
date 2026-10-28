@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thumbforensics"
+version = "0.1.0"
+description = "Recuperação forense de miniaturas (thumbnails) de fotos em extrações de iOS e Android"
+requires-python = ">=3.9"
+readme = "README.md"
+
+[project.optional-dependencies]
+phash = ["Pillow>=9"]
+
+[project.scripts]
+thumbforensics = "thumbforensics.cli:main"
