@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import os
 from pathlib import Path
 
 from . import model as m
@@ -24,7 +23,7 @@ def available() -> bool:
 
 def dhash(img: "Image.Image") -> int:
     small = img.convert("L").resize((9, 8))
-    px = list(small.getdata())
+    px = small.tobytes()
     bits = 0
     for row in range(8):
         for col in range(8):
@@ -32,25 +31,23 @@ def dhash(img: "Image.Image") -> int:
     return bits
 
 
-def index_originals(root: Path) -> list[tuple[int, str]]:
+def index_originals(seeker) -> list[tuple[int, str]]:
     index = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_DIRS]
-        for name in filenames:
-            p = Path(dirpath) / name
-            if p.suffix.lower() not in PIL_EXTS:
-                continue
-            try:
-                with Image.open(p) as img:
-                    index.append((dhash(img), p.relative_to(root).as_posix()))
-            except Exception:
-                continue
+    for rel in seeker.search("*/DCIM/*"):
+        low = rel.lower()
+        if any(f"/{d}/" in "/" + low for d in SKIP_DIRS) or Path(low).suffix not in PIL_EXTS:
+            continue
+        try:
+            with Image.open(io.BytesIO(seeker.read(rel))) as img:
+                index.append((dhash(img), rel))
+        except Exception:
+            continue
     return index
 
 
-def resolve(findings: list[m.Finding], root: Path, max_distance: int = 6) -> int:
+def resolve(findings: list[m.Finding], seeker, max_distance: int = 6) -> int:
     """Marca como PRESENTE as miniaturas cujo original aparece com outro nome. Retorna quantas."""
-    index = index_originals(root)
+    index = index_originals(seeker)
     matched = 0
     for f in findings:
         if f.status not in UNRESOLVED or not f.data or not index:

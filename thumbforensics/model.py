@@ -36,3 +36,11 @@ class Finding:
     note: str = ""
     data: bytes | None = field(default=None, repr=False)
     exported: str = ""          # caminho relativo no diretório de saída
+
+
+@dataclass
+class Result:
+    """O que um artefato devolve: uma tabela e/ou mídias recuperadas."""
+    headers: list[str] = field(default_factory=list)
+    rows: list[list] = field(default_factory=list)
+    findings: list[Finding] = field(default_factory=list)

@@ -40,32 +40,84 @@ Você também pode usar uma extração feita por outra ferramenta (iMazing, extr
 
 ### 2. Analisar
 
+A entrada pode ser uma **pasta**, um **.zip**, um **.tar/.tar.gz** ou a **pasta de um backup local do iTunes/Finder**. O tipo é detectado automaticamente.
+
 ```bash
 thumbforensics analisar casos/iphone -o saida-iphone
-thumbforensics analisar casos/android -o saida-android --phash
-thumbforensics analisar casos/android -o saida --carve casos/android/Android/data/com.sec.android.gallery3d/cache
+thumbforensics analisar ~/Library/Application\ Support/MobileSync/Backup/<UDID> -o saida-backup
+thumbforensics analisar extracao_ffs.zip -o saida --phash
+thumbforensics analisar casos/android -o saida --artefatos android_thumbnails,android_mediastore
+thumbforensics listar
 ```
 
-A pasta de origem nunca é alterada. Os bancos SQLite são copiados antes de serem abertos, e a saída não pode ficar dentro da origem.
+A origem nunca é alterada. Bancos SQLite são copiados (com `-wal`/`-shm`) para uma área temporária antes de abrir, e essa área é apagada no fim.
+
+Backups **criptografados** não são suportados: use o iLEAPP, que pede a senha, ou gere um backup sem senha só para a análise.
 
 Saída:
 
 | Arquivo | Conteúdo |
 |---|---|
-| `relatorio.html` | Galeria agrupada por status |
-| `relatorio.csv` / `relatorio.json` | Uma linha por miniatura |
+| `relatorio.html` | Uma seção por artefato: tabela e galeria por status |
+| `relatorio.json` | Uma linha por mídia recuperada |
+| `tabelas/<artefato>.csv` | Tabelas (ex.: itens do `Photos.sqlite` com data de exclusão) |
 | `recuperados/<status>/` | JPEGs extraídos |
-| `custodia.txt` | Data, comando e SHA-256 de cada item |
+| `custodia.txt` | Data, comando, estado de cada artefato, SHA-256 de **todo arquivo lido** e de cada item recuperado |
+
+## Arquitetura (inspirada no iLEAPP)
+
+```
+cli.py ──► seekers.py ──► plugins.py ──► engine.py ──► report.py
+           │               │               │
+           │               │               └ roda em ordem ("order"), compartilha dados
+           │               │                 entre artefatos (ctx.shared) e isola erros
+           │               └ descobre artifacts/*.py e --plugins DIR em tempo de execução
+           └ pasta | zip | tar | backup iTunes: todos expõem os mesmos caminhos
+             (ex.: private/var/mobile/Media/PhotoData/Photos.sqlite)
+```
+
+| Artefato | O que faz |
+|---|---|
+| `ios_photos_assets` | Itens do `Photos.sqlite` com data de criação e de envio à lixeira; publica a lista para o próximo |
+| `ios_thumbnails_v2` | Miniaturas cruzadas com o disco e o banco → órfãs, lixeira, só miniatura |
+| `ios_ithmb` | Caches brutos `.ithmb` (só hash) |
+| `android_mediastore` | `external.db`: liga miniatura → `image_id` → original (exige root/FFS) |
+| `android_thumbnails` | `.thumbnails/` e carving de `.thumbdata*`; usa o MediaStore se houver |
+| `android_gallery_caches` | Carving nos caches de galerias Samsung/Google Fotos/Xiaomi (root/FFS) |
+
+### Escrevendo um plugin
+
+Crie um `.py` numa pasta qualquer e rode com `--plugins pasta/`. Não é preciso mexer no código do app:
+
+```python
+from thumbforensics.model import Result
+
+ARTIFACTS = {
+    "whatsapp_midia": {                       # = nome da função
+        "name": "WhatsApp — mídia",
+        "description": "Lista arquivos de mídia do WhatsApp",
+        "platform": "ios",                    # ios | android | any
+        "paths": ("*/Message/Media/*",),      # globs; '*' atravessa '/'
+        "order": 50,                          # opcional
+    },
+}
+
+def whatsapp_midia(ctx):
+    rows = [[rel, len(ctx.seeker.read(rel))] for rel in ctx.files]
+    return Result(headers=["arquivo", "bytes"], rows=rows)
+```
+
+O `ctx` traz `files` (caminhos que casaram), `seeker` (`read`, `stage`, `exists`, `search`) e `shared` (dados de artefatos anteriores). Chaves duplicadas são rejeitadas. Uma exceção num plugin aparece no relatório sem interromper os demais.
 
 ## Como cada miniatura é classificada
 
 | Status | Significado |
 |---|---|
-| `orfa` | **iOS:** o original não está no disco nem no `Photos.sqlite`. É o indício mais forte de foto apagada. |
+| `orfa` | O original não está no disco nem no banco (`Photos.sqlite` no iOS, `external.db` no Android). É o indício mais forte de foto apagada. |
 | `lixeira` | Está em "Apagados Recentemente" (`ZTRASHEDSTATE = 1`). |
 | `so_miniatura` | O banco conhece a foto, mas o original não está no aparelho. Geralmente é o **iCloud com "Otimizar armazenamento"**, e não uma exclusão. |
 | `sem_original` | Original ausente e não há banco para confirmar. |
-| `desconhecido` | Não há como ligar a miniatura a um original. É o caso normal no Android, onde `1234.jpg` é um id do MediaStore cujo banco exige root. |
+| `desconhecido` | Não há como ligar a miniatura a um original. É o caso normal no Android sem root, já que o `external.db` do MediaStore fica fora do alcance do adb. |
 | `presente` | O original ainda existe (pelo caminho ou, com `--phash`, por semelhança visual). |
 | `nao_decodificado` | Arquivos `.ithmb` do iOS: pixels brutos, listados e com hash, mas não convertidos em imagem. |
 
@@ -80,7 +132,7 @@ Saída:
 **Android** (`/sdcard`)
 
 - `DCIM/.thumbnails/*.jpg` e `.thumbdata*`: vários JPEGs concatenados, extraídos por *carving*.
-- Caches de galerias de fabricantes em `Android/data/<pacote>/cache`: só em extrações com root (use `--carve`).
+- `external.db` do MediaStore e caches de galerias em `Android/data/<pacote>/cache`: só em extrações com root ou de sistema de arquivos completo.
 - Em Android 10+ (armazenamento com escopo), boa parte dos caches deixou de ficar no `/sdcard`, então espere menos resultados.
 
 ## O post viral: o que é verdade e o que não é
@@ -97,6 +149,10 @@ Saída:
 - Ferramentas comerciais (Cellebrite, Magnet AXIOM) fazem extrações completas que o AFC/adb não alcançam.
 
 Este projeto é focado e didático. Para casos reais, valide os resultados com ferramentas estabelecidas.
+
+## Créditos
+
+A arquitetura (seekers, plugins declarativos, encadeamento e isolamento de erros) e a tabela de domínios do backup do iTunes foram adaptadas do [iLEAPP](https://github.com/abrignoni/iLEAPP), de Alexis Brignoni e colaboradores, sob licença MIT. As consultas ao `Photos.sqlite` seguem as ideias dos módulos de Scott Koenig no mesmo projeto.
 
 ## Testes
 

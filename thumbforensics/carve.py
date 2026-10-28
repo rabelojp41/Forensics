@@ -56,3 +56,18 @@ def _find_end(data: bytes, start: int) -> int | None:
     # Dados entrópicos: o EOI é o primeiro FFD9 (FF00 e RSTn não são marcadores).
     end = data.find(EOI, i, start + MAX_JPEG)
     return None if end < 0 else end + 2
+
+
+def findings_from_blob(rel: str, data: bytes, platform: str) -> list:
+    """Um arquivo vira uma miniatura (JPEG inteiro) ou várias (carving)."""
+    from . import model as m
+    from .util import sha256_bytes
+
+    carved = list(carve_jpegs(data))
+    if len(carved) == 1 and carved[0][0] == 0 and not data[len(carved[0][1]):].strip(b"\x00"):
+        blob = carved[0][1]
+        return [m.Finding(platform=platform, source=rel, status=m.DESCONHECIDO,
+                          size=len(blob), sha256=sha256_bytes(blob), data=blob)]
+    return [m.Finding(platform=platform, source=rel, status=m.DESCONHECIDO, offset=off,
+                      size=len(blob), sha256=sha256_bytes(blob), note="extraído por carving", data=blob)
+            for off, blob in carved]
