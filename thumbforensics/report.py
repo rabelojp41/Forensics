@@ -35,7 +35,7 @@ def export(session: Session, out: Path) -> None:
         if run.result.rows:
             tdir = out / "tabelas"
             tdir.mkdir(exist_ok=True)
-            with open(tdir / f"{run.plugin.key}.csv", "w", newline="", encoding="utf-8") as fh:
+            with open(tdir / f"{run.plugin.key}.csv", "w", newline="", encoding="utf-8-sig") as fh:  # BOM: Excel no Windows
                 w = csv.writer(fh)
                 w.writerow(run.result.headers)
                 w.writerows(run.result.rows)

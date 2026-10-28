@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from pathlib import Path
 
 from . import __version__, acquire, engine, phash, plugins, report
@@ -10,6 +11,10 @@ from .seekers import SeekerError, open_source
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Terminais sem UTF-8 (ex.: saída redirecionada no Windows) não devem derrubar o programa.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     p = argparse.ArgumentParser(prog="thumbforensics", description=(
         "Recupera miniaturas de fotos (inclusive apagadas) e artefatos de fototeca em extrações de iOS e Android."))
     p.add_argument("--version", action="version", version=__version__)

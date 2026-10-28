@@ -44,12 +44,12 @@ class IOSTest(unittest.TestCase):
     def test_status(self):
         self.assertEqual(cli.main(["analisar", str(self.src), "-o", str(self.out)]), 0)
         self.assertEqual(ios_status(self.out), EXPECTED_IOS)
-        rows = json.loads((self.out / "relatorio.json").read_text())
+        rows = json.loads((self.out / "relatorio.json").read_text(encoding="utf-8"))
         self.assertTrue(any(r["status"] == m.NAO_DECODIFICADO for r in rows))
         orfa = next(r for r in rows if r["status"] == m.ORFA)
         self.assertEqual((self.out / orfa["exportado"]).read_bytes(), fake_jpeg())
-        self.assertIn("IMG_0004", (self.out / "relatorio.html").read_text())
-        trashed = (self.out / "tabelas/ios_photos_assets.csv").read_text()
+        self.assertIn("IMG_0004", (self.out / "relatorio.html").read_text(encoding="utf-8"))
+        trashed = (self.out / "tabelas/ios_photos_assets.csv").read_text(encoding="utf-8")
         self.assertIn("2024-10-07", trashed)
 
     def test_refuses_output_inside_source(self):
@@ -65,7 +65,7 @@ class AndroidTest(unittest.TestCase):
             (th / "1234.jpg").write_bytes(fake_jpeg())
             (th / ".thumbdata3-1967290299").write_bytes(fake_jpeg(b"1" * 800) + b"\x00" * 50 + fake_jpeg(b"2" * 800))
             self.assertEqual(cli.main(["analisar", str(src), "-o", str(out)]), 0)
-            rows = json.loads((out / "relatorio.json").read_text())
+            rows = json.loads((out / "relatorio.json").read_text(encoding="utf-8"))
             self.assertEqual(len(rows), 3)
             self.assertEqual(sum(1 for r in rows if r["offset"] != ""), 2)
 
@@ -96,7 +96,7 @@ EXPECTED_IOS = {
 
 
 def ios_status(out: Path) -> dict:
-    rows = json.loads((out / "relatorio.json").read_text())
+    rows = json.loads((out / "relatorio.json").read_text(encoding="utf-8"))
     return {r["original"].split("/")[-1]: r["status"] for r in rows if r["original"]}
 
 
@@ -145,7 +145,7 @@ class InputFormatsTest(unittest.TestCase):
         out = self.t / "out"
         self.assertEqual(cli.main(["analisar", str(backup), "-o", str(out)]), 0)
         self.assertEqual(ios_status(out), EXPECTED_IOS)
-        self.assertIn("private/var/mobile/Media/PhotoData/Photos.sqlite", (out / "custodia.txt").read_text())
+        self.assertIn("private/var/mobile/Media/PhotoData/Photos.sqlite", (out / "custodia.txt").read_text(encoding="utf-8"))
 
     def test_encrypted_backup_refused(self):
         backup = self.t / "backup"
@@ -161,7 +161,7 @@ class PluginTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             t = Path(t)
             (t / "src/notes").mkdir(parents=True)
-            (t / "src/notes/a.txt").write_text("olá")
+            (t / "src/notes/a.txt").write_text("olá", encoding="utf-8")
             (t / "plug").mkdir()
             (t / "plug/meu.py").write_text(
                 "from thumbforensics.model import Result\n"
@@ -173,20 +173,20 @@ class PluginTest(unittest.TestCase):
                 "    return Result(headers=['arquivo', 'texto'],\n"
                 "                  rows=[[f, ctx.seeker.read(f).decode()] for f in ctx.files])\n"
                 "def quebrado(ctx):\n"
-                "    raise RuntimeError('falhou de propósito')\n")
+                "    raise RuntimeError('falhou de propósito')\n", encoding="utf-8")
             out = t / "out"
             self.assertEqual(cli.main(["analisar", str(t / "src"), "-o", str(out),
                                        "--plugins", str(t / "plug")]), 0)
-            self.assertIn("olá", (out / "tabelas/notas.csv").read_text())
-            html = (out / "relatorio.html").read_text()
+            self.assertIn("olá", (out / "tabelas/notas.csv").read_text(encoding="utf-8-sig"))
+            html = (out / "relatorio.html").read_text(encoding="utf-8")
             self.assertIn("falhou de propósito", html)
-            self.assertIn("quebrado: ERRO", (out / "custodia.txt").read_text())
+            self.assertIn("quebrado: ERRO", (out / "custodia.txt").read_text(encoding="utf-8"))
 
     def test_duplicate_key_rejected(self):
         with tempfile.TemporaryDirectory() as t:
             (Path(t) / "dup.py").write_text(
                 "ARTIFACTS = {'ios_ithmb': {'name': 'x', 'description': 'd', 'platform': 'ios', 'paths': ()}}\n"
-                "def ios_ithmb(ctx): pass\n")
+                "def ios_ithmb(ctx): pass\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 plugins.load([Path(t)])
 
@@ -212,7 +212,7 @@ class MediaStoreTest(unittest.TestCase):
             con.commit()
             con.close()
             self.assertEqual(cli.main(["analisar", str(src), "-o", str(out)]), 0)
-            rows = json.loads((out / "relatorio.json").read_text())
+            rows = json.loads((out / "relatorio.json").read_text(encoding="utf-8"))
             status = {Path(r["origem"]).name: r["status"] for r in rows}
             self.assertEqual(status, {"111.jpg": m.PRESENTE, "222.jpg": m.ORFA, "333.jpg": m.DESCONHECIDO})
 
@@ -236,7 +236,7 @@ class PhashTest(unittest.TestCase):
             img.resize((96, 72)).save(buf, "JPEG")
             (th / "99.jpg").write_bytes(buf.getvalue())
             self.assertEqual(cli.main(["analisar", str(src), "-o", str(out), "--phash"]), 0)
-            rows = json.loads((out / "relatorio.json").read_text())
+            rows = json.loads((out / "relatorio.json").read_text(encoding="utf-8"))
             self.assertEqual(rows[0]["status"], m.PRESENTE)
             self.assertIn("IMG_renomeada.jpg", rows[0]["nota"])
 
