@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -75,12 +76,33 @@ def _check_android(returncode: int, output: str) -> tuple[bool, str]:
 
 def commands(platform: str, dest: Path) -> list[list[str]]:
     if platform == "ios":
-        return [["pymobiledevice3", "afc", "pull", f"/{p}", str(dest)] for p in IOS_PATHS]
+        # --ignore-errors: um arquivo que não pode ser criado (ex.: nome com ':' no Windows)
+        # é registrado e pulado, em vez de abortar a pasta inteira.
+        return [["pymobiledevice3", "afc", "pull", "--ignore-errors", f"/{p}", str(dest)] for p in IOS_PATHS]
     return [["adb", "pull", "-a", p, str(dest)] for p in ANDROID_PATHS]
+
+
+LOG_NAME = "_aquisicao.log"
+OK, FAILED, PARTIAL = 0, 1, 2
 
 
 def run(platform: str, dest: Path, dry_run: bool = False, log: Callable[[str], None] = print) -> int:
     dest.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return _run(platform, dest, True, log)
+    # Tudo que a cópia disser vai também para um arquivo: é o registro do que foi pulado e por quê.
+    with open(dest / LOG_NAME, "a", encoding="utf-8") as fh:
+        def tee(line: str) -> None:
+            fh.write(line + "\n")
+            fh.flush()
+            log(line)
+        tee(f"=== {datetime.now(timezone.utc).isoformat(timespec='seconds')} — aquisição {platform}")
+        code = _run(platform, dest, False, tee)
+        tee(f"=== fim (código {code})")
+    return code
+
+
+def _run(platform: str, dest: Path, dry_run: bool, log: Callable[[str], None]) -> int:
     cmds = commands(platform, dest)
     tool = cmds[0][0]
     if dry_run or shutil.which(tool) is None:
@@ -99,5 +121,7 @@ def run(platform: str, dest: Path, dry_run: bool = False, log: Callable[[str], N
             log(line.rstrip())
         if proc.wait() != 0:
             failures += 1
-            log("Falhou (o caminho pode não existir neste aparelho); seguindo.")
-    return 1 if failures == len(cmds) else 0
+            log("FALHOU: esta pasta não foi copiada por completo; seguindo.")
+    if failures == 0:
+        return OK
+    return FAILED if failures == len(cmds) else PARTIAL

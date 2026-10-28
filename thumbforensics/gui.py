@@ -266,9 +266,15 @@ class App:
                                 messagebox.showwarning("Copiar do celular", message))
             self.log(f"--- Copiando do {'iPhone' if platform == 'ios' else 'Android'} para {dest}")
             code = acquire.run(platform, dest, log=self.log)
-            if code == 0:
-                self.log("Cópia concluída. A origem da análise foi preenchida com esta pasta.")
+            log_file = dest / acquire.LOG_NAME
+            if code == acquire.OK:
+                self.log(f"Cópia concluída. Registro salvo em {log_file}.")
                 return lambda: self.src.set(str(dest))
+            if code == acquire.PARTIAL:
+                self.log(f"Cópia PARCIAL: alguma pasta falhou. Registro salvo em {log_file}.")
+                return lambda: (self.src.set(str(dest)), messagebox.showwarning(
+                    "Copiar do celular", "A cópia foi parcial: alguma pasta falhou.\n"
+                    f"A análise pode ficar incompleta. Veja o registro em:\n{log_file}"))
             return lambda: messagebox.showwarning("Copiar do celular", "A cópia falhou. Veja o registro.")
 
         self._in_background(work)
