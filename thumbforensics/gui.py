@@ -46,6 +46,7 @@ class App:
 
         self.acq_platform = StringVar(value="ios")
         self.acq_dest = StringVar()
+        self.device_status = StringVar(value="Plugue o aparelho e clique em “Verificar conexão”.")
         self.src = StringVar()
         self.src_kind = StringVar(value="Escolha uma pasta, um .zip/.tar ou a pasta de um backup.")
         self.out = StringVar()
@@ -74,8 +75,13 @@ class App:
         ttk.Label(f, text="Salvar em:").grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(f, textvariable=self.acq_dest).grid(row=1, column=1, sticky="ew", padx=6, pady=(8, 0))
         ttk.Button(f, text="Escolher…", command=lambda: self._pick_dir(self.acq_dest)).grid(row=1, column=2, pady=(8, 0))
-        self.acq_button = ttk.Button(f, text="Copiar do aparelho", command=self._start_acquire)
-        self.acq_button.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        actions = ttk.Frame(f)
+        actions.grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.check_button = ttk.Button(actions, text="Verificar conexão", command=self._start_check)
+        self.check_button.pack(side="left")
+        self.acq_button = ttk.Button(actions, text="Copiar do aparelho", command=self._start_acquire)
+        self.acq_button.pack(side="left", padx=(6, 0))
+        ttk.Label(actions, textvariable=self.device_status, wraplength=430).pack(side="left", padx=(10, 0))
         ttk.Label(f, foreground="gray", text=(
             "iPhone: desbloqueado, com “Confiar” aceito e pymobiledevice3 instalado.\n"
             "Android: Depuração USB ativa e adb instalado.")).grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
@@ -213,6 +219,7 @@ class App:
         state = "disabled" if busy else "normal"
         self.run_button.configure(state=state)
         self.acq_button.configure(state=state)
+        self.check_button.configure(state=state)
         if busy:
             self.progress.grid()
             self.progress.start(12)
@@ -234,6 +241,17 @@ class App:
 
         threading.Thread(target=target, daemon=True).start()
 
+    def _start_check(self):
+        platform = self.acq_platform.get()
+        self.device_status.set("Procurando…")
+
+        def work():
+            ok, message = acquire.check(platform)
+            self.log(("✔ " if ok else "✘ ") + message)
+            return lambda: self.device_status.set(("✔ " if ok else "✘ ") + message.splitlines()[0])
+
+        self._in_background(work)
+
     def _start_acquire(self):
         if not self.acq_dest.get():
             messagebox.showwarning("Copiar do celular", "Escolha onde salvar a cópia.")
@@ -241,6 +259,11 @@ class App:
         platform, dest = self.acq_platform.get(), Path(self.acq_dest.get())
 
         def work():
+            ok, message = acquire.check(platform)
+            self.log(("✔ " if ok else "✘ ") + message)
+            if not ok:
+                return lambda: (self.device_status.set("✘ " + message.splitlines()[0]),
+                                messagebox.showwarning("Copiar do celular", message))
             self.log(f"--- Copiando do {'iPhone' if platform == 'ios' else 'Android'} para {dest}")
             code = acquire.run(platform, dest, log=self.log)
             if code == 0:

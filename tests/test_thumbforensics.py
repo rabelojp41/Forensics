@@ -217,6 +217,33 @@ class MediaStoreTest(unittest.TestCase):
             self.assertEqual(status, {"111.jpg": m.PRESENTE, "222.jpg": m.ORFA, "333.jpg": m.DESCONHECIDO})
 
 
+class DeviceCheckTest(unittest.TestCase):
+    def test_ios(self):
+        from thumbforensics.acquire import _check_ios
+        ok, msg = _check_ios(0, '[{"DeviceName": "iPhone do JP", "Identifier": "abc"}]', "")
+        self.assertTrue(ok)
+        self.assertIn("iPhone do JP", msg)
+        self.assertFalse(_check_ios(0, "[]", "")[0])
+        self.assertIn("Apple Devices", _check_ios(1, "", "erro")[1])
+
+    def test_android(self):
+        from thumbforensics.acquire import _check_android
+        head = "List of devices attached\n"
+        self.assertTrue(_check_android(0, head + "R58M123\tdevice")[0])
+        ok, msg = _check_android(0, head + "R58M123\tunauthorized")
+        self.assertFalse(ok)
+        self.assertIn("aceite", msg)
+        self.assertFalse(_check_android(0, head)[0])
+
+    def test_missing_tool(self):
+        from unittest import mock
+        from thumbforensics import acquire
+        with mock.patch.object(acquire.shutil, "which", return_value=None):
+            ok, msg = acquire.check("ios")
+        self.assertFalse(ok)
+        self.assertIn("pip install pymobiledevice3", msg)
+
+
 @unittest.skipUnless(phash.available(), "Pillow não instalado")
 class PhashTest(unittest.TestCase):
     def test_match_renamed_original(self):

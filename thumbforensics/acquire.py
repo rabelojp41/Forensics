@@ -10,6 +10,7 @@ compartilhado (/sdcard) é acessível.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,57 @@ from typing import Callable
 
 IOS_PATHS = ["PhotoData", "DCIM"]
 ANDROID_PATHS = ["/sdcard/DCIM", "/sdcard/Pictures"]
+
+
+INSTALL_HINT = {
+    "ios": "Instale com: pip install pymobiledevice3 (com o ambiente .venv ativado).",
+    "android": "Instale com: winget install Google.PlatformTools (depois feche e abra o terminal).",
+}
+
+
+def check(platform: str) -> tuple[bool, str]:
+    """Verifica se há um aparelho conectado e pronto. Devolve (ok, mensagem)."""
+    tool = "pymobiledevice3" if platform == "ios" else "adb"
+    if shutil.which(tool) is None:
+        return False, f"'{tool}' não encontrado. {INSTALL_HINT[platform]}"
+    cmd = [tool, "usbmux", "list"] if platform == "ios" else [tool, "devices"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=30)
+    except subprocess.TimeoutExpired:
+        return False, f"'{' '.join(cmd)}' não respondeu em 30 s."
+    output = (proc.stdout + proc.stderr).strip()
+    if platform == "ios":
+        return _check_ios(proc.returncode, proc.stdout, output)
+    return _check_android(proc.returncode, output)
+
+
+def _check_ios(returncode: int, stdout: str, output: str) -> tuple[bool, str]:
+    if returncode != 0:
+        return False, ("Não foi possível falar com o serviço de dispositivos da Apple. No Windows, "
+                       "instale o app Apple Devices (Microsoft Store) ou o iTunes.\n" + output)
+    try:
+        devices = json.loads(stdout or "[]")
+    except json.JSONDecodeError:
+        return False, "Resposta inesperada do pymobiledevice3:\n" + output
+    if not devices:
+        return False, ("Nenhum iPhone encontrado. Confira o cabo (alguns só carregam), desbloqueie o "
+                       "iPhone e toque em “Confiar” quando aparecer.")
+    names = [str(d.get("DeviceName") or d.get("ProductType") or d.get("Identifier") or "iPhone")
+             for d in devices if isinstance(d, dict)] or ["iPhone"]
+    return True, f"Conectado: {', '.join(names)}"
+
+
+def _check_android(returncode: int, output: str) -> tuple[bool, str]:
+    if returncode != 0:
+        return False, "O adb falhou:\n" + output
+    states = [line.split()[1] for line in output.splitlines()[1:] if len(line.split()) >= 2]
+    if "device" in states:
+        return True, f"Conectado: {states.count('device')} aparelho(s) Android."
+    if "unauthorized" in states:
+        return False, "Aparelho encontrado, mas não autorizado: aceite o pedido de depuração USB na tela do celular."
+    return False, ("Nenhum Android encontrado. Ative Opções do desenvolvedor → Depuração USB e "
+                   "use o modo de USB “Transferência de arquivos”.")
 
 
 def commands(platform: str, dest: Path) -> list[list[str]]:
